@@ -1,0 +1,17 @@
+{
+  "示例配置_设备1": {
+    "backup_path": "/Users/YOUR_USERNAME/Library/Application Support/MobileSync/Backup/YOUR_DEVICE_ID_1",
+    "output_path": "./extracted/device1",
+    "file_types": ["main", "contacts", "messages"]
+  },
+  "示例配置_设备2": {
+    "backup_path": "/Users/YOUR_USERNAME/Library/Application Support/MobileSync/Backup/YOUR_DEVICE_ID_2", 
+    "output_path": "./extracted/device2",
+    "file_types": ["main", "messages"]
+  },
+  "历史备份示例": {
+    "backup_path": "/Volumes/EXTERNAL_DRIVE/iOS_Backups/BACKUP_FOLDER",
+    "output_path": "./extracted/historical_backup",
+    "file_types": ["main", "contacts", "messages", "oplog"]
+  }
+}

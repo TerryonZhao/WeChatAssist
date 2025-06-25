@@ -1,0 +1,42 @@
+# 微信备份提取工具配置文件示例
+# 复制此文件为 wechat_extractor_config.ini 并修改为您的实际路径
+
+[DEFAULT]
+# 默认输出目录
+output_dir = ./extracted_wechat_files
+
+# 是否显示详细信息
+verbose = true
+
+# 是否自动创建输出目录
+auto_create_dir = true
+
+[backup_paths]
+# 可以配置多个备份路径，使用标识符作为key
+# 请将下面的示例路径替换为您的实际备份路径
+# current = /Users/YOUR_USERNAME/Library/Application Support/MobileSync/Backup/YOUR_DEVICE_ID
+# old_backup = /Users/YOUR_USERNAME/Library/Application Support/MobileSync/Backup/ANOTHER_BACKUP_ID
+# family_member = /Users/YOUR_USERNAME/Library/Application Support/MobileSync/Backup/FAMILY_MEMBER_BACKUP_ID
+
+[output_paths]
+# 可以为不同的备份指定不同的输出目录
+# current = /path/to/your/output/directory
+# old_backup = ./old_backup_wechat
+# family_member = ./family_wechat
+
+[file_types]
+# 要提取的文件类型，可以启用/禁用
+extract_main_db = true
+extract_contacts = true
+extract_messages = true
+extract_oplog = true
+extract_images = false
+extract_audio = false
+extract_videos = false
+
+[advanced]
+# 高级选项
+generate_script = true
+script_name = extract_wechat.sh
+backup_extracted_files = false
+compress_output = false
