@@ -210,7 +210,7 @@ def main():
     
     # 其他选项
     parser.add_argument('--check-permissions', action='store_true', help='检查系统权限')
-    parser.add_argument('--version', action='version', version='WeChatExtractor 2.0.0')
+    parser.add_argument('--version', action='version', version='WeChatExtractor 1.0.0')
     
     args = parser.parse_args()
     
