@@ -7,11 +7,10 @@
 
 import sqlite3
 import json
-import re
 import csv
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Any
 
 
 class ChatAnalyzer:
@@ -104,7 +103,7 @@ class ChatAnalyzer:
         return ""
     
     def _build_contact_mapping(self):
-        """构建聊天表哈希值到联系人的映射 - 改进版本"""
+        """构建聊天表哈希值到联系人的映射 - 简化版本"""
         if self._contact_mapping is not None:
             return
             
@@ -128,7 +127,7 @@ class ChatAnalyzer:
                     # 提取哈希值
                     hash_value = table_name.replace('Chat_', '')
                     
-                    # 方法1: 尝试通过哈希值直接匹配联系人用户名
+                    # 尝试通过哈希值直接匹配联系人用户名
                     matched_contact = None
                     for username, contact in contacts.items():
                         # 检查是否username或其MD5哈希匹配表名
@@ -138,65 +137,12 @@ class ChatAnalyzer:
                             matched_contact = contact
                             break
                     
-                    # 方法2: 如果直接匹配失败，尝试分析消息内容
+                    # 如果找不到匹配，创建一个未知联系人记录
                     if not matched_contact:
-                        try:
-                            # 获取该表的一些消息样本
-                            cursor.execute(f"""
-                                SELECT Message FROM {table_name} 
-                                WHERE Message IS NOT NULL 
-                                AND Message != ''
-                                AND LENGTH(Message) > 0
-                                LIMIT 20
-                            """)
-                            
-                            messages = cursor.fetchall()
-                            potential_usernames = set()
-                            
-                            for (message,) in messages:
-                                if message:
-                                    # 安全处理消息内容，避免编码错误
-                                    try:
-                                        if isinstance(message, bytes):
-                                            message_str = message.decode('utf-8', errors='ignore')
-                                        else:
-                                            message_str = str(message)
-                                        
-                                        # 查找消息中的用户名模式
-                                        usernames = re.findall(r'(wxid_[a-zA-Z0-9]+|[a-zA-Z0-9_]+@[a-zA-Z0-9_]+)', message_str)
-                                        potential_usernames.update(usernames)
-                                    except Exception:
-                                        # 如果无法处理消息内容，跳过
-                                        continue
-                            
-                            # 匹配已知联系人
-                            for username in potential_usernames:
-                                if username in contacts:
-                                    matched_contact = contacts[username]
-                                    break
-                                    
-                        except Exception as e:
-                            print(f"⚠️  分析表 {table_name} 时出错: {e}")
-                    
-                    # 方法3: 如果仍然找不到，创建一个未知联系人记录
-                    if not matched_contact:
-                        # 尝试从表中获取一些统计信息来生成描述性名称
                         try:
                             cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
                             msg_count = cursor.fetchone()[0]
-                            
-                            cursor.execute(f"""
-                                SELECT MIN(CreateTime), MAX(CreateTime) FROM {table_name}
-                                WHERE CreateTime > 0
-                            """)
-                            time_range = cursor.fetchone()
-                            
-                            if time_range and time_range[0]:
-                                start_date = datetime.fromtimestamp(time_range[0]).strftime('%Y-%m')
-                                display_name = f"未知联系人_{start_date}_{msg_count}条消息"
-                            else:
-                                display_name = f"未知联系人_{hash_value[:8]}"
-                                
+                            display_name = f"未知联系人_{hash_value[:8]}_{msg_count}条消息"
                         except:
                             display_name = f"未知联系人_{hash_value[:8]}"
                         
@@ -318,8 +264,6 @@ class ChatAnalyzer:
                         where_conditions.append("Message LIKE ?")
                         params.append(f"%{keyword}%")
                     
-                    # 移除message_type参数，因为我们只处理文字消息
-                    
                     where_clause = " AND ".join(where_conditions)
                     
                     # 查询消息
@@ -329,9 +273,6 @@ class ChatAnalyzer:
                         WHERE {where_clause}
                         ORDER BY CreateTime ASC
                     """
-                    
-                    if limit and not contact_filter:  # 如果没有联系人过滤，直接限制数量
-                        query += f" LIMIT {limit}"
                     
                     cursor.execute(query, params)
                     rows = cursor.fetchall()
@@ -374,9 +315,7 @@ class ChatAnalyzer:
                             'direction': des,  # 1=接收, 0=发送
                             'local_id': local_id,
                             'server_id': svr_id,
-                            'status': status,
-                            'table_hash': hash_value,
-                            'database': db_path.name
+                            'status': status
                         }
                         
                         all_messages.append(message_data)
@@ -396,7 +335,7 @@ class ChatAnalyzer:
         return all_messages
     
     def export_messages(self, messages: List[Dict[str, Any]], 
-                       output_file: str, format: str = 'json') -> bool:
+                       output_file: str, format: str = 'json', custom_remark: str = None) -> bool:
         """
         导出消息到文件
         
@@ -404,6 +343,7 @@ class ChatAnalyzer:
             messages: 消息列表
             output_file: 输出文件路径
             format: 导出格式 ('json', 'csv', 'txt')
+            custom_remark: 自定义联系人备注（用于显示）
             
         Returns:
             是否成功
@@ -414,46 +354,56 @@ class ChatAnalyzer:
             
             if format.lower() == 'json':
                 # JSON格式
+                export_messages = []
+                for msg in messages:
+                    msg_copy = msg.copy()
+                    if custom_remark and msg_copy['direction'] != 0:
+                        msg_copy['contact_display_name'] = custom_remark
+                        msg_copy['contact_remark'] = custom_remark
+                    export_messages.append(msg_copy)
+                
                 with open(output_path, 'w', encoding='utf-8') as f:
-                    json.dump(messages, f, ensure_ascii=False, indent=2, default=str)
+                    json.dump(export_messages, f, ensure_ascii=False, indent=2, default=str)
             
             elif format.lower() == 'csv':
                 # CSV格式
                 if messages:
-                    # 手动创建CSV，不依赖pandas
                     with open(output_path, 'w', encoding='utf-8-sig', newline='') as f:
-                        if messages:
-                            fieldnames = messages[0].keys()
-                            writer = csv.DictWriter(f, fieldnames=fieldnames)
-                            writer.writeheader()
-                            for msg in messages:
-                                # 处理datetime对象
-                                row = {}
-                                for key, value in msg.items():
-                                    if isinstance(value, datetime):
-                                        row[key] = value.strftime('%Y-%m-%d %H:%M:%S')
-                                    else:
-                                        row[key] = value
-                                writer.writerow(row)
+                        fieldnames = messages[0].keys()
+                        writer = csv.DictWriter(f, fieldnames=fieldnames)
+                        writer.writeheader()
+                        for msg in messages:
+                            # 处理datetime对象和自定义备注
+                            row = {}
+                            for key, value in msg.items():
+                                if isinstance(value, datetime):
+                                    row[key] = value.strftime('%Y-%m-%d %H:%M:%S')
+                                elif custom_remark and key in ['contact_display_name', 'contact_remark'] and msg['direction'] != 0:
+                                    row[key] = custom_remark
+                                else:
+                                    row[key] = value
+                            writer.writerow(row)
                 
             elif format.lower() == 'txt':
                 # 文本格式
                 with open(output_path, 'w', encoding='utf-8') as f:
                     current_contact = None
+                    contact_name = custom_remark if custom_remark else (messages[0]['contact_display_name'] if messages else "未知联系人")
+                    
                     for msg in messages:
                         # 联系人分组
-                        if current_contact != msg['contact_display_name']:
-                            current_contact = msg['contact_display_name']
+                        display_name = custom_remark if custom_remark else msg['contact_display_name']
+                        if current_contact != display_name:
+                            current_contact = display_name
                             f.write(f"\n{'='*50}\n")
                             f.write(f"联系人: {current_contact}\n")
                             f.write(f"{'='*50}\n\n")
                         
                         # 消息内容
-                        # 消息内容
                         if msg['direction'] == 0:
                             sender = "我"
                         else:
-                            sender = msg['contact_display_name']
+                            sender = custom_remark if custom_remark else msg['contact_display_name']
                             
                         time_str = msg['datetime'].strftime('%Y-%m-%d %H:%M:%S') if msg['datetime'] else "未知时间"
                         
@@ -470,104 +420,3 @@ class ChatAnalyzer:
         except Exception as e:
             print(f"❌ 导出失败: {e}")
             return False
-    
-    def _get_message_type_description(self, msg_type: int) -> str:
-        """获取消息类型描述"""
-        type_map = {
-            1: "文本",
-            3: "图片",
-            34: "语音",
-            43: "视频",
-            47: "表情包",
-            48: "位置",
-            49: "链接/小程序",
-            50: "视频通话",
-            62: "小视频",
-            10000: "系统消息"
-        }
-        return type_map.get(msg_type, f"未知类型({msg_type})")
-    
-    def get_chat_statistics(self, contact_filter: Optional[str] = None,
-                           start_time: Optional[datetime] = None,
-                           end_time: Optional[datetime] = None) -> Dict[str, Any]:
-        """
-        获取聊天统计信息
-        
-        Args:
-            contact_filter: 联系人过滤条件
-            start_time: 开始时间
-            end_time: 结束时间
-            
-        Returns:
-            统计信息字典
-        """
-        messages = self.search_messages(
-            contact_filter=contact_filter,
-            start_time=start_time,
-            end_time=end_time
-        )
-        
-        if not messages:
-            return {
-                'total_messages': 0,
-                'contacts': [],
-                'message_types': {},
-                'time_range': {},
-                'daily_stats': {}
-            }
-        
-        # 基本统计
-        total_messages = len(messages)
-        
-        # 联系人统计
-        contact_stats = {}
-        for msg in messages:
-            contact = msg['contact_display_name']
-            if contact not in contact_stats:
-                contact_stats[contact] = {'sent': 0, 'received': 0, 'total': 0}
-            
-            if msg['direction'] == 0:  # 发送
-                contact_stats[contact]['sent'] += 1
-            else:  # 接收
-                contact_stats[contact]['received'] += 1
-            contact_stats[contact]['total'] += 1
-        
-        # 消息类型统计
-        type_stats = {}
-        for msg in messages:
-            msg_type = msg['message_type']
-            type_desc = self._get_message_type_description(msg_type)
-            type_stats[type_desc] = type_stats.get(type_desc, 0) + 1
-        
-        # 时间范围统计
-        timestamps = [msg['timestamp'] for msg in messages if msg['timestamp']]
-        if timestamps:
-            time_range = {
-                'earliest': datetime.fromtimestamp(min(timestamps)),
-                'latest': datetime.fromtimestamp(max(timestamps)),
-                'span_days': (max(timestamps) - min(timestamps)) / 86400
-            }
-        else:
-            time_range = {}
-        
-        # 每日统计
-        daily_stats = {}
-        for msg in messages:
-            if msg['datetime']:
-                date_key = msg['datetime'].strftime('%Y-%m-%d')
-                if date_key not in daily_stats:
-                    daily_stats[date_key] = {'sent': 0, 'received': 0, 'total': 0}
-                
-                if msg['direction'] == 0:
-                    daily_stats[date_key]['sent'] += 1
-                else:
-                    daily_stats[date_key]['received'] += 1
-                daily_stats[date_key]['total'] += 1
-        
-        return {
-            'total_messages': total_messages,
-            'contacts': contact_stats,
-            'message_types': type_stats,
-            'time_range': time_range,
-            'daily_stats': daily_stats
-        }
